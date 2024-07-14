@@ -6,7 +6,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 import joblib
 import matplotlib.pyplot as plt
-
+import math
 def download_stock_data(tickers, start_date, end_date):
     all_data = pd.DataFrame()
     for ticker in tickers:
@@ -148,41 +148,72 @@ class Simulation:
         self.ticker_ = ticker
         self.capital_ = startCapital
         self.model_ = fine_tune_model(ticker, "2015-01-01", "2024-01-01")[0]
+        self.buying_price_ = 0
+        self.number_of_stocks_ = 0
+
+    def sell(self, price):
+        worth = price * self.number_of_stocks_
+        profit = worth - self.buying_price_ * self.number_of_stocks_
+        tax = profit / 4
+        self.capital_ += (worth - tax)
+        self.buying_price_ = 0
+        self.number_of_stocks_ = 0
+
+    def buy(self, price):
+        if (price > self.capital_):
+            print("Cant buy")
+            return
+        self.buying_price_ = price
+        self.number_of_stocks_ =  math.floor(self.capital_ / price)
+        self.capital_ -= price * self.number_of_stocks_
         
-
-    def find_local_peaks(self, df):
-        # Find local peaks
-        df['min'] = df.data[(df.data.shift(1) > df.data) & (df.data.shift(-1) > df.data)]
-        df['max'] = df.data[(df.data.shift(1) < df.data) & (df.data.shift(-1) < df.data)]
-        return df
-
+        
+    
     def simulate(self):
          # Download and process data
         data = yf.download([self.ticker_], start="2024-01-01", end="2024-07-01")
         data = add_features(data)
         data = fill_mean(data)
-        index = 0
+
         for date, today in data.iterrows():
             newdf = pd.DataFrame([today[['Close', 'SMA_10', 'SMA_50', 'EMA_10', 'Volume_Change', 'High_Low_Diff']]])
             prediction = self.model_.predict(newdf)
             today["Next_Close"] = prediction
+            df_for_peaks = pd.DataFrame(data['Close'][:date])
+            df_for_peaks = pd.concat([df_for_peaks, pd.DataFrame([prediction], columns=df_for_peaks.columns)])
+            df_for_peaks = find_local_peaks(df_for_peaks, 'Close')
+            if (df_for_peaks['min'][date] == today['Close']):
+                self.buy(today['Close'])
+                today['Action'] = 'Buying'
+            if (df_for_peaks['max'][date] == today['Close']):
+                self.sell(today['Close'])
+                today['Action'] = 'Selling'
         data.Next_Close.shift(1)
+        self.sell(data['Close'][date])
         return data
 
         
+def find_local_peaks(df, column):
+    # Find local peaks
+    df['min'] = df[column][(df[column].shift(1) > df[column]) & (df[column].shift(-1) > df[column])]
+    df['max'] = df[column][(df[column].shift(1) < df[column]) & (df[column].shift(-1) < df[column])]
+    return df
 
             
         
 
 
-sim = Simulation("META", 1000)
+sim = Simulation("META", 10000)
 data = sim.simulate()
 
 newdf = pd.DataFrame(data)
-
+peaks = find_local_peaks(newdf, "Next_Close")
 x = newdf.index
+print(sim.capital_)
 plt.plot(newdf.index, newdf['Close'], label="Actual")
 plt.plot(newdf.index, newdf['Next_Close'], label='Prediction')
+plt.scatter(peaks.index, peaks['min'], c="r")
+plt.scatter(peaks.index, peaks['max'], c="g")
 
 plt.legend()
 plt.show()
