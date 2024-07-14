@@ -152,6 +152,8 @@ class Simulation:
         self.number_of_stocks_ = 0
 
     def sell(self, price):
+        if (self.number_of_stocks_ == 0):
+            return
         worth = price * self.number_of_stocks_
         profit = worth - self.buying_price_ * self.number_of_stocks_
         tax = profit / 4
@@ -179,16 +181,23 @@ class Simulation:
             newdf = pd.DataFrame([today[['Close', 'SMA_10', 'SMA_50', 'EMA_10', 'Volume_Change', 'High_Low_Diff']]])
             prediction = self.model_.predict(newdf)
             today["Next_Close"] = prediction
+
+            #Calculating peaks an trouts
             df_for_peaks = pd.DataFrame(data['Close'][:date])
             df_for_peaks = pd.concat([df_for_peaks, pd.DataFrame([prediction], columns=df_for_peaks.columns)])
             df_for_peaks = find_local_peaks(df_for_peaks, 'Close')
+
+            #Checking if the current price is a peak
             if (df_for_peaks['min'][date] == today['Close']):
                 self.buy(today['Close'])
                 today['Action'] = 'Buying'
             if (df_for_peaks['max'][date] == today['Close']):
                 self.sell(today['Close'])
                 today['Action'] = 'Selling'
+        #Shifting the predicted values back
         data.Next_Close.shift(1)
+
+        #Selling if still left some stocks
         self.sell(data['Close'][date])
         return data
 
