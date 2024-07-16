@@ -17,7 +17,7 @@ import math
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-
+from sklearn.model_selection import GridSearchCV
 
 def calculate_stock_parameters(df):
     # Calculate moving averages
@@ -85,6 +85,7 @@ def calculate_stock_parameters(df):
     df['max'] = df['Close'][(df['Close'].shift(1) < df['Close']) & (df['Close'].shift(-1) < df['Close'])]
 
     df['IsPeak'] = df.apply(lambda row: 1 if row['Close'] == row['max'] else (-1 if row['Close'] == row['min'] else 0), axis=1)
+    df = df.drop(columns=['min', 'max'])
     return df
 
 
@@ -145,16 +146,23 @@ def train_initial_model(tickers, start_date, end_date, model_path='initial_stock
     data = download_stock_data(tickers, start_date, end_date)
     x = data.drop(columns=['IsPeak'])
     y = data['IsPeak']
-
-    
     X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
     
     # Train the model
-    model = RandomForestClassifier(n_estimators=500, random_state=42)
-    model.fit(X_train, y_train)
+    model = RandomForestClassifier(random_state=42)
+
+    param_grid = {
+        'n_estimators': [100, 200, 300, 400, 500],
+        'max_features': ['auto', 'sqrt', 'log2'],
+        'max_depth': [10, 20, 30, 40],
+        'criterion': ['gini', 'entropy']
+    }
+    grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, n_jobs=-1, verbose=2)
+    
+    grid_search.fit(X_train, y_train)
+    model =grid_search.best_estimator_
 
     y_pred = model.predict(X_test)
-
     # Evaluate the model
     print(confusion_matrix(y_test, y_pred))
     print(classification_report(y_test, y_pred))
@@ -166,6 +174,15 @@ def train_initial_model(tickers, start_date, end_date, model_path='initial_stock
     
     return model
 
+
+def get_sp500_tickers():
+    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+
+    table = pd.read_html(url, header=0)
+    df = table[0]
+    tickers = df['Symbol'].to_list()
+    tickers = [str(ticker) for ticker in tickers]
+    return tickers
 
 
 tickers = [
@@ -185,7 +202,7 @@ tickers = [
 model = joblib.load('initial_stock_model_peaks.pkl')
 
 # Load historical data for an unseen stock (e.g., Tesla)
-unseen_stock_ticker = 'META'
+unseen_stock_ticker = 'ABT'
 unseen_stock_data = yf.download(unseen_stock_ticker, start='2020-01-01', end='2023-01-01')
 
 # Calculate the parameters for the unseen stock data
