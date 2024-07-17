@@ -19,7 +19,7 @@ times = [
 for time in times:
     hour, minute = map(int, time.split(':'))
     trigger = CronTrigger(hour=hour, minute=minute, second=0, timezone='America/New_York')
-    scheduler.add_job(alpaca_tading.main(), trigger)
+    scheduler.add_job(alpaca_tading.main, trigger)
 
 # Start the scheduler
 try:
